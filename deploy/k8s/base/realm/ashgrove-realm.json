@@ -1,0 +1,209 @@
+{
+  "realm": "ashgrove",
+  "enabled": true,
+  "displayName": "Ashgrove Group (sandbox)",
+  "accessTokenLifespan": 300,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      {
+        "name": "support_agent",
+        "description": "Read customers and tickets, reply, refund up to the automatic limit"
+      },
+      {
+        "name": "support_lead",
+        "description": "Everything a support agent can do, plus approve larger refunds and erase customer data"
+      },
+      {
+        "name": "loan_officer",
+        "description": "Review loan applications and record credit decisions"
+      },
+      {
+        "name": "recruiter",
+        "description": "Review applicants and move them between stages"
+      },
+      {
+        "name": "it_admin",
+        "description": "Reset services and read integration secrets"
+      },
+      {
+        "name": "auditor",
+        "description": "Read audit logs and high-risk records"
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "maria",
+      "enabled": true,
+      "firstName": "Maria",
+      "lastName": "de Vries",
+      "email": "maria@ashgrove.example.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ashgrove-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "support_agent"
+      ]
+    },
+    {
+      "username": "tunde",
+      "enabled": true,
+      "firstName": "Tunde",
+      "lastName": "Balogun",
+      "email": "tunde@ashgrove.example.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ashgrove-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "support_lead"
+      ]
+    },
+    {
+      "username": "lena",
+      "enabled": true,
+      "firstName": "Lena",
+      "lastName": "Fischer",
+      "email": "lena@ashgrove.example.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ashgrove-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "loan_officer"
+      ]
+    },
+    {
+      "username": "james",
+      "enabled": true,
+      "firstName": "James",
+      "lastName": "Patel",
+      "email": "james@ashgrove.example.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ashgrove-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "recruiter"
+      ]
+    },
+    {
+      "username": "ade",
+      "enabled": true,
+      "firstName": "Ade",
+      "lastName": "Okafor",
+      "email": "ade@ashgrove.example.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ashgrove-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "it_admin"
+      ]
+    },
+    {
+      "username": "ruth",
+      "enabled": true,
+      "firstName": "Ruth",
+      "lastName": "Khumalo",
+      "email": "ruth@ashgrove.example.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ashgrove-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "auditor"
+      ]
+    },
+    {
+      "username": "service-account-ashgrove-agent",
+      "enabled": true,
+      "serviceAccountClientId": "ashgrove-agent",
+      "realmRoles": [
+        "support_agent"
+      ]
+    },
+    {
+      "username": "service-account-ashgrove-overprivileged-agent",
+      "enabled": true,
+      "serviceAccountClientId": "ashgrove-overprivileged-agent",
+      "realmRoles": [
+        "support_agent",
+        "support_lead",
+        "loan_officer",
+        "recruiter",
+        "it_admin",
+        "auditor"
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "ashgrove-agent",
+      "name": "Least-privilege support agent",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "ashgrove-agent-sandbox-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "attributes": {
+        "standard.token.exchange.enabled": "true"
+      }
+    },
+    {
+      "clientId": "ashgrove-overprivileged-agent",
+      "name": "DELIBERATELY over-privileged agent (for security capstones)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "overprivileged-sandbox-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "ashgrove-portal",
+      "name": "Staff portal (browser login)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:*",
+        "http://127.0.0.1:*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ]
+}

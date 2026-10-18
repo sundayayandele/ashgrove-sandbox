@@ -1,0 +1,109 @@
+# Ashgrove sandbox: the beginner option. Kubernetes/OpenShift is the default target (deploy/k8s).
+#
+#   docker compose up -d                                   # six services + mail catcher, no login
+#   docker compose --profile identity up -d                # adds Keycloak (set AUTH_MODE=keycloak in .env)
+#   docker compose --profile observability up -d           # adds OTel collector, Tempo, Prometheus, Grafana
+#
+# All ports bind to localhost only.
+
+x-service: &service
+  build: .
+  image: ghcr.io/sundayayandele/ashgrove-sandbox:${ASHGROVE_TAG:-0.1.0}
+  restart: unless-stopped
+  volumes:
+    - ashgrove-data:/data
+  environment: &env
+    ASHGROVE_SEED: ${ASHGROVE_SEED:-42}
+    AUTH_MODE: ${AUTH_MODE:-none}
+    KEYCLOAK_ISSUER: http://localhost:8080/realms/ashgrove
+    KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/ashgrove/protocol/openid-connect/certs
+    REFUND_AUTO_LIMIT_EUR: ${REFUND_AUTO_LIMIT_EUR:-100}
+    CHAOS_ERROR_RATE: ${CHAOS_ERROR_RATE:-0}
+    CHAOS_LATENCY_MS: ${CHAOS_LATENCY_MS:-0}
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
+    interval: 10s
+    timeout: 3s
+    retries: 5
+
+services:
+  crm:
+    <<: *service
+    command: ["crm", "--port", "8000"]
+    ports: ["127.0.0.1:8001:8000"]
+  orders:
+    <<: *service
+    command: ["orders", "--port", "8000"]
+    ports: ["127.0.0.1:8002:8000"]
+  helpdesk:
+    <<: *service
+    command: ["helpdesk", "--port", "8000"]
+    ports: ["127.0.0.1:8003:8000"]
+  lending:
+    <<: *service
+    command: ["lending", "--port", "8000"]
+    ports: ["127.0.0.1:8004:8000"]
+  hr:
+    <<: *service
+    command: ["hr", "--port", "8000"]
+    ports: ["127.0.0.1:8005:8000"]
+  docs:
+    <<: *service
+    command: ["docs", "--port", "8000"]
+    ports: ["127.0.0.1:8006:8000"]
+
+  mailpit:
+    image: axllent/mailpit:v1.24.1
+    ports:
+      - "127.0.0.1:8025:8025"   # web UI: every email an agent sends lands here
+      - "127.0.0.1:1025:1025"   # SMTP
+
+  keycloak:
+    profiles: ["identity"]
+    image: quay.io/keycloak/keycloak:26.2.5
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-change-me}
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./deploy/keycloak/ashgrove-realm.json:/opt/keycloak/data/import/ashgrove-realm.json:ro
+    ports: ["127.0.0.1:8080:8080"]
+
+  otel-collector:
+    profiles: ["observability"]
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC: point your agents here
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+  tempo:
+    profiles: ["observability"]
+    image: grafana/tempo:2.7.2
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./deploy/observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.3.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.6.1
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
+    volumes:
+      - ./deploy/observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+    ports: ["127.0.0.1:3000:3000"]
+
+volumes:
+  ashgrove-data:
+  tempo-data:

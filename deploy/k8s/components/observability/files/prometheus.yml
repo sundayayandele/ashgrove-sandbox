@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: ashgrove
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["crm:8000", "orders:8000", "helpdesk:8000", "lending:8000", "hr:8000", "docs:8000"]
