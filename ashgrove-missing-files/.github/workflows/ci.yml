@@ -1,0 +1,120 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KUSTOMIZE_VERSION: v5.6.0
+  KUBECONFORM_VERSION: v0.6.7
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check . && ruff format --check .
+      - run: pytest -q
+      - run: python deploy/k8s/generate.py --check
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kustomize and kubeconform
+        run: |
+          curl -sSfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar xz
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz
+      - name: Validate Kubernetes overlay
+        run: ./kustomize build deploy/k8s/overlays/kubernetes | ./kubeconform -strict -summary -kubernetes-version 1.31.0 -
+      - name: Validate OpenShift overlay (Routes skipped, no public schema)
+        run: ./kustomize build deploy/k8s/overlays/openshift | ./kubeconform -strict -summary -kubernetes-version 1.31.0 -skip Route -
+      - name: Validate Compose file
+        run: docker compose --profile identity --profile observability config -q
+
+  compose-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up -d --build --wait
+      - name: Every service answers
+        run: for p in 8001 8002 8003 8004 8005 8006; do curl -fsS "http://127.0.0.1:$p/readyz"; echo; done
+      - name: The refund gate holds
+        run: |
+          ORDER=$(curl -fsS -H "X-Roles: support_agent" http://127.0.0.1:8003/v1/tickets/T-5047 | python -c "import sys,json;print(json.load(sys.stdin)['order_id'])")
+          AMOUNT=$(curl -fsS http://127.0.0.1:8002/v1/orders/$ORDER | python -c "import sys,json;print(json.load(sys.stdin)['amount_eur'])")
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Roles: support_agent" -H "Content-Type: application/json" \
+            -d "{\"amount_eur\": $AMOUNT}" http://127.0.0.1:8002/v1/orders/$ORDER/refunds)
+          test "$CODE" = "403"
+      - if: failure()
+        run: docker compose logs
+      - run: docker compose down -v
+
+  kind-deploy:
+    needs: [test, manifests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: ashgrove
+      - name: Build image and load it into kind
+        run: |
+          TAG=$(python -c "import sys; sys.path.insert(0,'src'); import ashgrove; print(ashgrove.__version__)")
+          docker build -t ghcr.io/sundayayandele/ashgrove-sandbox:$TAG .
+          kind load docker-image ghcr.io/sundayayandele/ashgrove-sandbox:$TAG --name ashgrove
+      - name: Deploy the Kubernetes overlay
+        run: |
+          curl -sSfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar xz
+          ./kustomize build deploy/k8s/overlays/kubernetes | kubectl apply -f -
+      - name: Wait for the six services
+        run: kubectl -n ashgrove wait --for=condition=available --timeout=180s deploy/crm deploy/orders deploy/helpdesk deploy/lending deploy/hr deploy/docs
+      - name: Login is enforced in the cluster
+        run: |
+          kubectl -n ashgrove port-forward svc/orders 18002:8000 &
+          sleep 3
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18002/v1/orders)" = "401"
+      - if: failure()
+        run: kubectl -n ashgrove get pods -o wide && kubectl -n ashgrove describe pods | tail -100
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [compose-smoke, kind-deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Version without the leading v (matches the manifests)
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/sundayayandele/ashgrove-sandbox:${{ steps.v.outputs.version }}
+            ghcr.io/sundayayandele/ashgrove-sandbox:latest
