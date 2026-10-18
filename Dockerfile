@@ -2,6 +2,10 @@
 # Runs as a non-root, arbitrary UID so it works under OpenShift's restricted SCC.
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/sundayayandele/ashgrove-sandbox" \
+      org.opencontainers.image.description="Ashgrove Group sandbox: six fictional company services for agentic AI labs" \
+      org.opencontainers.image.licenses="MIT"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ASHGROVE_DATA_DIR=/data
